@@ -51,7 +51,6 @@ Tested across the full ~514-ticker universe, using a 6-month out-of-sample windo
 - Tracks open positions in a local CSV (ticker, entry date, entry price, entry RSI) so state persists across independent daily runs
 - Includes safeguards against duplicate order submission (checking both live Alpaca positions and pending/unfilled orders) and per-ticker error isolation so one bad data pull doesn't crash the full run
 
-**Note on strategy consistency:** the live script's entry logic checks `RSI < 30` on each run, while the backtest requires an RSI *crossing* event (RSI < 30 today, RSI ≥ 30 the prior day) so it only fires on the first oversold day. This means the live script can re-signal on a ticker that stays oversold across multiple days, whereas the backtest would not. As a result, the live deployment and the backtest above should be treated as **two related but distinct proof points** — a validated historical simulation, and a separately engineered live automated pipeline — rather than a single unified track record.
 
 ---
 

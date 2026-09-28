@@ -83,9 +83,8 @@ spx["Regime50"] = spx["Close"] > spx["MA50"]
 today_regime = spx["Regime50"].iloc[-1]
 
 #Create sigal check function to determine what stocks the buy today
-def check_signal(ticker, market_regime):
-    data = yf.download(ticker, period="1y")
-    data.columns = data.columns.droplevel(1)
+def check_signal(ticker, ticker_data, market_regime):
+    data = ticker_data
 
     data["MA200"] = data["Close"].rolling(window=200).mean()
 
@@ -107,7 +106,8 @@ def check_signal(ticker, market_regime):
     data["RSI"] = 100 - (100 / (1 + data["RS"]))
 
     today = data.iloc[-1]
-    buy_signal_today = (today["RSI"] < 30) and (today["Close"] > today["MA200"]) and market_regime
+    yesterday = data.iloc[-2]
+    buy_signal_today = (today["RSI"] < 30) and (yesterday["RSI"] >= 30) and (today["Close"] > today["MA200"]) and market_regime
 
     return (ticker, buy_signal_today, today["RSI"], today["ATR"], today["Close"])
 
@@ -126,28 +126,26 @@ sector_etfs = ["XLF", "XLK", "XLE", "XLV", "XLY", "XLP", "XLI", "XLU", "XLB", "X
 
 full_universe = sp500_tickers + sector_etfs
 
+all_data = yf.download(full_universe, period= "1y", group_by= "ticker")
+
+present_tickers = [t for t in full_universe if t in all_data.columns.get_level_values(0).unique()]
+
+nan_tickers = [t for t in present_tickers if all_data[t]["Close"].isna().all()]
+
+final_universe = [t for t in present_tickers if t not in nan_tickers]
 #Run tickers through check_signal, collecting signals in a list
 all_signals = []
 
 
-for i in full_universe:
+for i in final_universe:
     try:
-        all_signals.append(check_signal(i, today_regime))
+        all_signals.append(check_signal(i, all_data[i], today_regime))
     except Exception as e:
         print(e)
         print(i)
 
 #From all_signals, we check to see what signals are "True" 
-todays_buys = [s for s in all_signals if s[1] == True]
-
-#Sort possible buys from lowest to highest RSI, then select lowest three RSIs
-todays_sorted_buys = sorted(todays_buys, key= lambda t: t[2])
-
-top_candidates = todays_sorted_buys[:3]
 positions = trading_client.get_all_positions()
-
-#Next, we need to determine if candidates have already been bought, so we check Alpaca positions and open_positions.csv
-candidate_symbols = [t[0] for t in top_candidates]
 position_symbols = [p.symbol for p in positions]
 if os.path.exists("open_positions.csv"):
     current_positions = pd.read_csv("open_positions.csv")
@@ -155,7 +153,22 @@ if os.path.exists("open_positions.csv"):
 else:
     bought_tickers = []
 dont_buy = bought_tickers + position_symbols
+todays_buys = [s for s in all_signals if s[1] == True and  s[0] not in dont_buy]
+
+
+#Sort possible buys from lowest to highest RSI, then select lowest three RSIs
+todays_sorted_buys = sorted(todays_buys, key= lambda t: t[2])
+
+top_candidates = todays_sorted_buys[:3]
+
+
+#Next, we need to determine if candidates have already been bought, so we check Alpaca positions and open_positions.csv
+candidate_symbols = [t[0] for t in top_candidates]
+
 buy_symbols = [t for t in candidate_symbols if t not in dont_buy]
+
+with open("daily_runs.txt", "a") as f:
+    f.write((f"{pd.Timestamp.today()}, {len(todays_buys)}, {dont_buy}, {todays_buys}, {top_candidates}, {buy_symbols}\n" ))
 
 #Get current balance in Alpaca to determine risk and how much we could buy into a stock
 account = trading_client.get_account()
@@ -184,29 +197,35 @@ for order in sized_orders:
     side=OrderSide.BUY,
     time_in_force=TimeInForce.DAY
     )
+    try:
+        submitted_order = trading_client.submit_order(order_request)
+        with open("daily_orders.txt", "a") as o:
+            o.write(f"{pd.Timestamp.today()}, {order}\n")
 
-    submitted_order = trading_client.submit_order(order_request)
-    #Add the new position to open_positions.csv for future reference
-    match = [t for t in top_candidates if t[0] == symbol]
-    new_row = {"ticker": match[0][0], "entry_date": pd.Timestamp.today().date(),
+        #Add the new position to open_positions.csv for future reference
+
+        match = [t for t in top_candidates if t[0] == symbol]
+        new_row = {"ticker": match[0][0], "entry_date": pd.Timestamp.today().date(),
                     "entry_price": match[0][4], "entry_rsi": match[0][2]}
-    csv_row = pd.DataFrame([new_row])
-    if os.path.exists("open_positions.csv"):
-        csv_row.to_csv(
-            "open_positions.csv",
-            sep = ",",
-            mode = "a",
-            header = False,
-            index = False
-        )
-    else:
-        csv_row.to_csv(
-            "open_positions.csv",
-            sep = ",",
-            mode = "a",
-            header = True,
-            index = False
-        )
-        
-
-
+        csv_row = pd.DataFrame([new_row])
+        if os.path.exists("open_positions.csv"):
+            csv_row.to_csv(
+                "open_positions.csv",
+                sep = ",",
+                mode = "a",
+                header = False,
+                index = False
+            )
+        else:
+            csv_row.to_csv(
+                "open_positions.csv",
+                sep = ",",
+                mode = "a",
+                header = True,
+                index = False
+            )
+            
+    except Exception as e:
+        with open("daily_orders.txt", "a") as o:
+            o.write(f"{pd.Timestamp.today()}, Failure: {e}, {order}\n")
+    

@@ -4,6 +4,8 @@ import requests
 from bs4 import BeautifulSoup
 from io import StringIO
 
+
+REQUIRE_CROSSOVER = False
 end_date = pd.Timestamp.today() 
 cutoff_date = end_date - pd.DateOffset(months=6)  # today minus 6 months
 start_date = end_date - pd.DateOffset(months=30)  # today minus 30 months (2.5 years)
@@ -57,10 +59,11 @@ def run_backtest(ticker,market_regime,risk_per_trade,max_position_size):
     data["RSI"] = 100 - (100 / (1 + data["RS"]))
 
     prior_RSI = data["RSI"].shift(1)
-
-    data["BuySignal"] = (data["RSI"] < 30) & (data["RSI"].shift(1) >= 30) & (data["Close"] > data["MA200"]) & (data["MarketRegime"] == True)
-    data["BuySignalNoRegime"] = (data["RSI"] < 30) & (data["RSI"].shift(1) >= 30) & (data["Close"] > data["MA200"])
-    print(ticker, data["BuySignalNoRegime"].sum(), data["BuySignal"].sum())
+    if REQUIRE_CROSSOVER:
+        data["BuySignal"] = (data["RSI"] < 30) & (prior_RSI >= 30) & (data["Close"] > data["MA200"]) & (data["MarketRegime"] == True)
+    else:
+         data["BuySignal"] = (data["RSI"] < 30) & (data["Close"] > data["MA200"]) & (data["MarketRegime"] == True)
+    print(ticker, data["BuySignal"].sum())
     data["SellSignal"] = (data["RSI"] > 70) & (data["RSI"].shift(1) <= 70)
 
     in_position = False
@@ -222,23 +225,13 @@ for capped_current_equity in capped_equity_curve:
     capped_drawdown.append((capped_current_equity - capped_running_peak) / capped_running_peak)
 
 
-print(max_real_drawdown)
-print(current_balance)
-print(current_balance - account_size)
-print(compounding_equity_curve[:5])
-print(compounding_equity_curve[-5:])
+print(f"Max real drawdown = {max_real_drawdown}")
+print(f"Current balance = {current_balance}")
+print(f"Overall = {overall_avg_return}")
+print(f"Win rate = {overall_win_rate}")
+print(f"Trade count = {len(all_trades)}")
+print(f"Require crossover = {REQUIRE_CROSSOVER}")
 
 
 
-print(total_dollar_return)
-print(total_capped_dollar_return)
-print(capped_avg_dollar_return)
 
-print(capped_win_rate)
-print(len(capped_trades))
-print(min(capped_drawdown))
-print("---------Below is baseline info---------")
-print(overall_avg_return)
-print(overall_win_rate)
-print(len(clean_trades))
-print(min(drawdown))
