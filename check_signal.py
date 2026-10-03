@@ -40,7 +40,7 @@ def check_exit(ticker, entry_price, entry_date, entry_rsi):
         return (True, ticker,  current_data["Close"])
     elif current_data["Close"] <= (entry_price * 0.925):
         return (True, ticker,  current_data["Close"])
-    elif days_held == 5:
+    elif days_held >= 5:
         return (True, ticker,  current_data["Close"])
     else:
         return (False, None, None)
@@ -61,10 +61,6 @@ if os.path.exists("open_positions.csv"):
         except Exception as e: 
             print(e)
     remaining_positions = positions_df[~positions_df["ticker"].isin(tickers_to_remove)]
-    print("Tickers to remove")
-    print(f"{tickers_to_remove}")
-    print("Remaining positions")
-    print(f"{remaining_positions}")
     remaining_positions.to_csv(
         "open_positions.csv",
         sep= ",",
