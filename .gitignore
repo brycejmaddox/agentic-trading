@@ -4,3 +4,10 @@ output.txt
 test.py
 daily_runs.txt
 daily_orders.txt
+open_positions_test.csv
+failed_runs.txt
+daily_exits.txt
+__pycache__/
+*txt
+*csv
+check_signal_debug.py
